@@ -1,8 +1,8 @@
-
 import numpy as np
 import torch
 import torch.nn.functional as F
 from typing import List
+from scipy.stats import weightedtau
 
 def compute_topk_accuracy(preds, labels, k_list=[1, 10, 20, 30]):
     """
@@ -147,4 +147,18 @@ def loss_cal_topk_hybrid(y_out, true_val, num_nodes, device, topk_ratio=0.25, sa
 
     loss_rank = torch.nn.MarginRankingLoss(margin=0.8).forward(input_arr1, input_arr2, rank_measure)
     return loss_rank
+
+def safe_kendall_tau(pred, true):
+    pred = np.asarray(pred)
+    true = np.asarray(true)
+
+    # Mask to filter out invalid entries
+    mask = np.isfinite(pred) & np.isfinite(true)
+    pred = pred[mask]
+    true = true[mask]
+
+    if len(np.unique(pred)) <= 1 or len(np.unique(true)) <= 1:
+        return 0.0  # No meaningful ranking
+    kt, _ = weightedtau(pred, true)
+    return kt if np.isfinite(kt) else 0.0
 
