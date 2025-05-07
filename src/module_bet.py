@@ -28,26 +28,25 @@ class TATKC_TGAT(nn.Module):
 
         self.num_layers = num_layers
         self.ngh_finder = ngh_finder
+        self.null_idx = null_idx
+        self.logger = logging.getLogger(__name__)
+        self.n_feat_th = torch.nn.Parameter(torch.from_numpy(n_feat.astype(np.float32)))
+        # self.n_feat_th = n_feat
+        self.node_raw_embed = torch.nn.Embedding.from_pretrained(self.n_feat_th, padding_idx=0, freeze=True)
 
-        #raw node features
-        self.n_feat_th = nn.Parameter(torch.from_numpy(n_feat.astype(np.float32)))
+        self.feat_dim = self.n_feat_th.shape[1]
 
-        self.feat_dim = self.n_feat_th.shape[1] #256
-
-        self.node_raw_embed = nn.Embedding.from_pretrained(self.n_feat_th, padding_idx=0, freeze=True)
-
-        self.use_time = use_time
-        #self.n_feat_dim = self.feat_dim + self.feat_dim  # Features + Time Encoding
         self.n_feat_dim = self.feat_dim
         self.model_dim = self.feat_dim
 
+        self.use_time = use_time
         self.merge_layer = MergeLayer(self.feat_dim, self.feat_dim, self.feat_dim, self.feat_dim)
-
+                        
         self.attn_model_list = torch.nn.ModuleList([AttnModel(self.feat_dim,
-                                                              self.feat_dim,
-                                                              attn_mode=attn_mode,
-                                                              n_head=n_head,
-                                                              drop_out=drop_out) for _ in range(num_layers)])
+                                                                  self.feat_dim,
+                                                                  attn_mode=attn_mode,
+                                                                  n_head=n_head,
+                                                                  drop_out=drop_out) for _ in range(num_layers)])
 
         # Time Encoding
         if use_time == 'pos':
@@ -62,19 +61,6 @@ class TATKC_TGAT(nn.Module):
         self.affinity_score = MergeLayer(self.feat_dim, self.feat_dim, self.feat_dim,
                                          1)  # torch.nn.Bilinear(self.feat_dim, self.feat_dim, 1, bias=True)
 
-        ptd_proj_dim = 128
-        self.ptd_proj = nn.Sequential(
-            nn.Linear(1, ptd_proj_dim),
-            nn.ReLU(),
-            nn.Dropout(0.1)
-
-        )
-        self.combine_proj = nn.Sequential(
-            nn.Linear(256, 128),  # Reduce src_feat + ptd_proj (256) → 128
-            nn.ReLU(),
-            nn.Dropout(0.1)
-        )
-
     def forward(self, src_idx_l, target_idx_l, cut_time_l, num_neighbors=20):
 
         src_embed = self.tem_conv(src_idx_l, cut_time_l, self.num_layers, num_neighbors)
@@ -83,87 +69,64 @@ class TATKC_TGAT(nn.Module):
 
         return score
 
-    def tem_conv(self, src_idx_l, cut_time_l, ptd_all, curr_layers, num_neighbors=12):
+    def tem_conv(self, src_idx_l, cut_time_l, curr_layers, num_neighbors=15):
         assert (curr_layers >= 0)
 
         device = self.n_feat_th.device
+
         batch_size = len(src_idx_l)
 
         src_node_batch_th = torch.from_numpy(src_idx_l).long().to(device)
         cut_time_l_th = torch.from_numpy(cut_time_l).float().to(device)
+
         cut_time_l_th = torch.unsqueeze(cut_time_l_th, dim=1)
-
-        # --- Time encoding ---
+        # query node always has the start time -> time span == 0
         src_node_t_embed = self.time_encoder(torch.zeros_like(cut_time_l_th))
-
-        # --- Raw node features ---
         src_node_feat = self.node_raw_embed(src_node_batch_th)
 
-        # --- PTD projection for source nodes ---
-        src_ptd = ptd_all[src_node_batch_th - 1].unsqueeze(-1).to(device)  # [B, 1]
-        src_ptd_embed = self.ptd_proj(src_ptd)  # [B, ptd_dim]
-
         if curr_layers == 0:
-            return src_node_feat, src_ptd_embed
+            return src_node_feat
         else:
-            src_node_conv_feat, src_ptd_conv_feat = self.tem_conv(src_idx_l,
+            src_node_conv_feat = self.tem_conv(src_idx_l,
                                                cut_time_l,
-                                               ptd_all,
                                                curr_layers=curr_layers - 1,
                                                num_neighbors=num_neighbors)
 
             src_node_conv_feat = F.normalize(src_node_conv_feat, p=2, dim=1)
-            src_ptd_conv_feat = F.normalize(src_ptd_conv_feat, p=2, dim=1)
-
             src_ngh_node_batch, src_ngh_t_batch = self.ngh_finder.get_temporal_neighbor(tuple(src_idx_l),
                                                                                         tuple(cut_time_l),
                                                                                         num_neighbors=num_neighbors)
 
             src_ngh_node_batch_th = torch.from_numpy(src_ngh_node_batch).long().to(device)
+
             src_ngh_t_batch_delta = cut_time_l[:, np.newaxis] - src_ngh_t_batch
             src_ngh_t_batch_th = torch.from_numpy(src_ngh_t_batch_delta).float().to(device)
 
             # get previous layer's node features
             src_ngh_node_batch_flat = src_ngh_node_batch.flatten()  # reshape(batch_size, -1)
             src_ngh_t_batch_flat = src_ngh_t_batch.flatten()  # reshape(batch_size, -1)
-
-            # --- PTD for neighbors ---
-            flat_ngh_ptd = ptd_all[src_ngh_node_batch_flat - 1].unsqueeze(-1).to(device)  # [B * num_neighbors, 1]
-            flat_ngh_ptd_embed = self.ptd_proj(flat_ngh_ptd)  # [B * num_neighbors, ptd_dim]
-
-            # --- Recursive convolutional features for neighbors ---
-            src_ngh_node_conv_feat, ptd_ngh_conv_feat = self.tem_conv(
-                                                   src_ngh_node_batch_flat,
+            src_ngh_node_conv_feat = self.tem_conv(src_ngh_node_batch_flat,
                                                    src_ngh_t_batch_flat,
-                                                   ptd_all,
                                                    curr_layers=curr_layers - 1,
                                                    num_neighbors=num_neighbors)
-
             src_ngh_feat = src_ngh_node_conv_feat.view(batch_size, num_neighbors, -1)
             src_ngh_feat = F.normalize(src_ngh_feat, p=2, dim=1)
 
-            ptd_ngh_feat = ptd_ngh_conv_feat.view(batch_size, num_neighbors, -1)
-            ptd_ngh_feat = F.normalize(ptd_ngh_feat, p=2, dim=1)
-
-            # --- Neighbor time encoding ---
+            # get node time features
             src_ngh_t_embed = self.time_encoder(src_ngh_t_batch_th)
 
             # attention aggregation
             mask = src_ngh_node_batch_th == 0
             attn_m = self.attn_model_list[curr_layers - 1]
 
-            attn_out_struct, _ = attn_m(src_node_conv_feat,
+            local, weight = attn_m(src_node_conv_feat,
                                    src_node_t_embed,
                                    src_ngh_feat,
                                    src_ngh_t_embed,
                                    mask)
+            local = F.normalize(local, p=2, dim=1)
 
-            attn_out_ptd, _ = attn_m(src_ptd_conv_feat, src_node_t_embed, ptd_ngh_feat,src_ngh_t_embed, mask)
-
-            attn_out_struct = F.normalize(attn_out_struct, p=2, dim=1)
-            attn_out_ptd = F.normalize(attn_out_ptd, p=2, dim=1)
-
-            return attn_out_struct, attn_out_ptd
+            return local
 
 class MergeLayer(torch.nn.Module):
     def __init__(self, dim1, dim2, dim3, dim4):
