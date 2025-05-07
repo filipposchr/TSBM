@@ -9,7 +9,7 @@ import numpy as np
 import random
 from tqdm import tqdm
 import torch.nn as nn
-from module_bet2 import TATKC_TGAT
+from module_bet import TATKC_TGAT
 from scipy.stats import weightedtau
 from nx2graphs import load_real_data, load_real_true_TKC, load_train_real_data, load_real_train_true_TKC
 from utils import  loss_cal_simple, compute_topk_accuracy
