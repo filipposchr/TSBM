@@ -7,20 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Model integrating the additional feature pass-through degree (ptd).
+# Model using only the default (node ids) feature in conv network.
 
-# src_feat (dim = 128)
-
-# ptd_feat (dim=1)
-#       1. Project it to trasnform it to 128-dim (ptd_proj)
-#       2. Passed through the convolutional network (as the default feature "src_idx_l")
-#       3. finding the ptd of neighbors and passed through conv network
-#       4. passed through the feature AttnModel-attention model (attn_out_ptd)
-
-# TATKC_TGAT.tem_conv() returns:
-       # attn_out_struct: 128-dim (node feature passed through the conv network and feature attention mechanism)
-       # attn_out_ptd: 128-dim (ptd feature passed through the conv network and feature attention mechanism)
- 
 class TATKC_TGAT(nn.Module):
     def __init__(self, ngh_finder, n_feat, attn_mode='prod', use_time='time',
                  agg_method='lstm', num_layers=3, n_head=4, null_idx=0, num_heads=2, drop_out=0.3, seq_len=None):
