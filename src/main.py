@@ -195,8 +195,8 @@ print("************ Epochs: ", NUM_EPOCH)
 
 #LOAD MODELS
 if testing:
-    tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_3.pth'))
-    MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_3.pth'))
+    tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_1.pth'))
+    MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_1.pth'))
 
 
 def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
