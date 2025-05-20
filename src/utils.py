@@ -5,6 +5,34 @@ from typing import List
 from scipy.stats import weightedtau, rankdata
 import math
 
+def rank_with_id_tiebreak(values):
+    values = np.array(values)
+    return rankdata(values, method='ordinal')  # unique ranks even with ties
+
+def compute_kendall_tau(preds, labels):
+    preds = np.array(preds)
+    labels = np.array(labels)
+
+    # Standard weighted KT over all nodes
+    label_ranked_full = rank_with_id_tiebreak(labels)
+    pred_ranked_full = rank_with_id_tiebreak(preds)
+    kt_full, _ = weightedtau(pred_ranked_full, label_ranked_full)
+
+    # Filtered weighted KT (only label > 0)
+    nonzero_mask = labels > 0
+    if np.sum(nonzero_mask) > 1:
+        label_filtered = labels[nonzero_mask]
+        pred_filtered = preds[nonzero_mask]
+
+        label_ranked_filt = rank_with_id_tiebreak(label_filtered)
+        pred_ranked_filt = rank_with_id_tiebreak(pred_filtered)
+        kt_filt, _ = weightedtau(pred_ranked_filt, label_ranked_filt)
+    else:
+        kt_filt = 0.0  # can't compute with ≤1 item
+
+    return kt_full, kt_filt
+
+
 def temporal_adjacency_list(src_list, dst_list, ts_list, num_nodes):
     tal = [[] for _ in range(num_nodes + 1)]  # +1 for 1-based indexing
     # Populate the temporal adjacency list
@@ -14,10 +42,9 @@ def temporal_adjacency_list(src_list, dst_list, ts_list, num_nodes):
 
     return tal
 
+
 def edge_time_range(temporal_edges):
     """
-    Replicates the Julia function edge_time_range.
-
     Args:
         temporal_edges: List of tuples (src, dst, timestamp)
 
@@ -39,6 +66,7 @@ def edge_time_range(temporal_edges):
     sorted_max = sorted(temporal_edge_max.items(), key=lambda x: x[1])
 
     return sorted_min, sorted_max
+
 
 def count_less_than(arr: List[int], t: int) -> int:
     left, right = 0, len(arr) - 1
@@ -67,6 +95,7 @@ def pass_through_degree(temporal_edges, num_nodes):
 
     return ptd
 
+
 def loss_cal(y_out, true_val, num_nodes, device):
     _, order_y_true = torch.sort(-true_val[:num_nodes])
 
@@ -82,6 +111,61 @@ def loss_cal(y_out, true_val, num_nodes, device):
     loss_rank = torch.nn.MarginRankingLoss(margin=1.0).forward(input_arr1, input_arr2, rank_measure)
 
     return loss_rank
+
+def compute_topk_metrics(preds, labels, k_list=[1, 10, 20, 30], jac=True):
+    """
+    Computes overlap Top@k% = |pred ∩ true| / k and full-set Jaccard index.
+    """
+    stats = {}
+    N = len(preds)
+    preds = preds.detach().cpu()
+    labels = labels.detach().cpu()
+
+    true_nonzero_set = set(torch.where(labels > 0)[0].tolist())
+
+    if len(true_nonzero_set) == 0:
+        for k in k_list:
+            stats[f"Top@{k}%"] = 0.0
+        if jac:
+            stats["Jaccard"] = 0.0
+        return stats
+
+    result_line = []
+
+    for k in k_list:
+        topk = max(1, math.ceil(N * (k / 100)))
+        pred_topk_idx = set(torch.topk(preds, topk).indices.tolist())
+        true_topk_idx = set(torch.topk(labels, topk).indices.tolist())
+
+        intersection = pred_topk_idx & true_topk_idx
+        score = len(intersection) / topk
+        stats[f"Top@{k}%"] = score
+        result_line.append(f"Top@{k}%: {score:.4f}")
+
+    if jac:
+        pred_full_set = set(torch.topk(preds, len(true_nonzero_set)).indices.tolist())
+        union = pred_full_set | true_nonzero_set
+        inter = pred_full_set & true_nonzero_set
+        jaccard = len(inter) / len(union)
+        stats["Jaccard"] = jaccard
+        result_line.append(f"Jaccard: {jaccard:.4f}")
+
+    print(" | ".join(result_line))
+    return stats
+
+
+def generate_soft_topk_targets(true_vals, top_k=50, decay=0.95):
+    """
+    Generate soft labels: decaying weights for top-k indices based on true_vals.
+    """
+    device = true_vals.device
+    N = true_vals.size(0)
+    soft_labels = torch.zeros(N, device=device)
+
+    topk_vals, topk_idx = torch.topk(true_vals, top_k)
+    weights = torch.tensor([decay ** i for i in range(top_k)], device=device)
+    soft_labels[topk_idx] = weights
+    return soft_labels
 
 def loss_cal_with_soft_topk(y_out, true_val, num_nodes, device, topk_ratio=0.01, decay=0.95, alpha=0.5):
     """
@@ -109,80 +193,3 @@ def loss_cal_with_soft_topk(y_out, true_val, num_nodes, device, topk_ratio=0.01,
 
     #Combined loss
     return (1 - alpha) * loss_rank + alpha * loss_soft
-
-
-#-------------------------------------------------------------
-#METRICS
-def rank_with_id_tiebreak(values):
-    values = np.array(values)
-    return rankdata(values, method='ordinal')  # unique ranks even with ties
-
-def compute_kendall_tau(preds, labels):
-    preds = np.array(preds)
-    labels = np.array(labels)
-
-    # Standard weighted KT over all nodes
-    label_ranked_full = rank_with_id_tiebreak(labels)
-    pred_ranked_full = rank_with_id_tiebreak(preds)
-    kt_full, _ = weightedtau(pred_ranked_full, label_ranked_full)
-
-    # Filtered weighted KT (only label > 0)
-    nonzero_mask = labels > 0
-    if np.sum(nonzero_mask) > 1:
-        label_filtered = labels[nonzero_mask]
-        pred_filtered = preds[nonzero_mask]
-
-        label_ranked_filt = rank_with_id_tiebreak(label_filtered)
-        pred_ranked_filt = rank_with_id_tiebreak(pred_filtered)
-        kt_filt, _ = weightedtau(pred_ranked_filt, label_ranked_filt)
-    else:
-        kt_filt = 0.0  # can't compute with ≤1 item
-
-    return kt_full, kt_filt
-
-def compute_topk_metrics_all(preds, labels, k_list=[1, 10, 20, 30], jac=True):
-    stats = {}
-    N = len(preds)
-    preds = preds.detach().cpu()
-    labels = labels.detach().cpu()
-
-    # For full-set Jaccard
-    true_full_set = set(torch.where(labels > 0)[0].tolist())
-
-    for k in k_list:
-        topk = max(1, math.ceil(N * (k / 100)))
-
-        if topk == 0 or len(true_full_set) == 0:
-            stats[f"Top@{k}%"] = 0.0
-            continue
-
-        pred_topk_idx = set(torch.topk(preds, topk).indices.tolist())
-        true_topk_idx = set(torch.topk(labels, topk).indices.tolist())
-
-        # Top-k metrics
-        intersection = pred_topk_idx & true_topk_idx
-        union = pred_topk_idx | true_topk_idx
-        print(f"Top@{k}%: {len(intersection)} / {topk} = {len(intersection) / topk:.4f}")
-
-        stats[f"Top@{k}%"] = len(intersection) / topk
-
-    # Compute full-set Jaccard
-    pred_full_set = set(torch.topk(preds, len(true_full_set)).indices.tolist())
-    if jac:
-        full_jacc = len(pred_full_set & true_full_set) / len(pred_full_set | true_full_set)
-        stats["Jaccard"] = full_jacc
-
-    return stats
-
-def generate_soft_topk_targets(true_vals, top_k=50, decay=0.95):
-    """
-    Generate soft labels: decaying weights for top-k indices based on true_vals.
-    """
-    device = true_vals.device
-    N = true_vals.size(0)
-    soft_labels = torch.zeros(N, device=device)
-
-    topk_vals, topk_idx = torch.topk(true_vals, top_k)
-    weights = torch.tensor([decay ** i for i in range(top_k)], device=device)
-    soft_labels[topk_idx] = weights
-    return soft_labels
