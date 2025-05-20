@@ -2,31 +2,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from typing import List
-from scipy.stats import weightedtau
-
-def compute_topk_accuracy(preds, labels, k_list=[1, 10, 20, 30]):
-    """
-    preds, labels: torch tensors of shape [N]
-    Returns dict: {"Top@10%": ..., "Top@20%": ...}
-    """
-    stats = {}
-    N = len(preds)
-    preds = preds.detach().cpu()
-    labels = labels.detach().cpu()
-
-    for k in k_list:
-        topk = int(N * (k / 100))
-        if topk == 0:
-            stats[f"Top@{k}%"] = 0.0
-            continue
-
-        pred_topk_idx = torch.topk(preds, topk).indices
-        true_topk_idx = torch.topk(labels, topk).indices
-
-        overlap = len(set(pred_topk_idx.tolist()) & set(true_topk_idx.tolist()))
-        stats[f"Top@{k}%"] = overlap / topk
-
-    return stats
+from scipy.stats import weightedtau, rankdata
+import math
 
 def temporal_adjacency_list(src_list, dst_list, ts_list, num_nodes):
     tal = [[] for _ in range(num_nodes + 1)]  # +1 for 1-based indexing
@@ -63,7 +40,6 @@ def edge_time_range(temporal_edges):
 
     return sorted_min, sorted_max
 
-
 def count_less_than(arr: List[int], t: int) -> int:
     left, right = 0, len(arr) - 1
     pos = 0
@@ -91,7 +67,7 @@ def pass_through_degree(temporal_edges, num_nodes):
 
     return ptd
 
-def loss_cal_simple(y_out, true_val, num_nodes, device):
+def loss_cal(y_out, true_val, num_nodes, device):
     _, order_y_true = torch.sort(-true_val[:num_nodes])
 
     sample_num = num_nodes * 80
@@ -107,58 +83,106 @@ def loss_cal_simple(y_out, true_val, num_nodes, device):
 
     return loss_rank
 
-def loss_cal_topk_hybrid(y_out, true_val, num_nodes, device, topk_ratio=0.25, sample_per_node=40):
-    true_val = true_val[:num_nodes]
-    y_out = y_out[:num_nodes]
+def loss_cal_with_soft_topk(y_out, true_val, num_nodes, device, topk_ratio=0.01, decay=0.95, alpha=0.5):
+    """
+    Combines margin ranking loss with soft top-k loss.
+    - alpha: weight for soft loss vs ranking loss
+    """
+    #Ranking loss
+    _, order_y_true = torch.sort(-true_val[:num_nodes])
 
-    # Sort ground truth BC to get top-k node indices
-    sorted_idx = torch.argsort(true_val, descending=True)
-    k = max(1, int(topk_ratio * num_nodes))
-    topk_idx = sorted_idx[:k]
-    rest_idx = sorted_idx[k:]
+    sample_num = num_nodes * 80
+    ind_1 = torch.randint(0, num_nodes, (sample_num,)).long().to(device)
+    ind_2 = torch.randint(0, num_nodes, (sample_num,)).long().to(device)
 
-    # Sample more pairs involving top-k nodes
-    num_samples = min(num_nodes * sample_per_node, 20000)
-    topk_sample_size = int(num_samples * 0.4)  # 70% from topk vs rest
-    uniform_sample_size = num_samples - topk_sample_size
+    rank_measure = torch.sign(-1 * (ind_1 - ind_2)).float()
 
-    # Top-k vs rest sampling
-    ind_1_topk = topk_idx[torch.randint(0, len(topk_idx), (topk_sample_size,))].to(device)
-    ind_2_rest = rest_idx[torch.randint(0, len(rest_idx), (topk_sample_size,))].to(device)
+    input_arr1 = y_out[:num_nodes][order_y_true[ind_1]].to(device)
+    input_arr2 = y_out[:num_nodes][order_y_true[ind_2]].to(device)
 
-    # Uniform sampling
-    ind_1_uniform = torch.randint(0, num_nodes, (uniform_sample_size,), device=device)
-    ind_2_uniform = torch.randint(0, num_nodes, (uniform_sample_size,), device=device)
+    loss_rank = torch.nn.MarginRankingLoss(margin=1.0).forward(input_arr1, input_arr2, rank_measure)
 
-    # Merge all
-    ind_1 = torch.cat([ind_1_topk, ind_1_uniform])
-    ind_2 = torch.cat([ind_2_rest, ind_2_uniform])
+    #Soft top-k loss
+    top_k = int(num_nodes * topk_ratio)
+    soft_targets = generate_soft_topk_targets(true_val[:num_nodes], top_k=top_k, decay=decay)
+    loss_soft = F.smooth_l1_loss(y_out[:num_nodes], soft_targets)
 
-    # Compute rank measure
-    rank_measure = torch.sign(true_val[ind_1] - true_val[ind_2]).float()
-    valid_mask = rank_measure != 0
+    #Combined loss
+    return (1 - alpha) * loss_rank + alpha * loss_soft
 
-    if valid_mask.sum() < 1:
-        return torch.tensor(0.0, device=device, requires_grad=True)
 
-    input_arr1 = y_out[ind_1[valid_mask]]
-    input_arr2 = y_out[ind_2[valid_mask]]
-    rank_measure = rank_measure[valid_mask]
+#-------------------------------------------------------------
+#METRICS
+def rank_with_id_tiebreak(values):
+    values = np.array(values)
+    return rankdata(values, method='ordinal')  # unique ranks even with ties
 
-    loss_rank = torch.nn.MarginRankingLoss(margin=0.8).forward(input_arr1, input_arr2, rank_measure)
-    return loss_rank
+def compute_kendall_tau(preds, labels):
+    preds = np.array(preds)
+    labels = np.array(labels)
 
-def safe_kendall_tau(pred, true):
-    pred = np.asarray(pred)
-    true = np.asarray(true)
+    # Standard weighted KT over all nodes
+    label_ranked_full = rank_with_id_tiebreak(labels)
+    pred_ranked_full = rank_with_id_tiebreak(preds)
+    kt_full, _ = weightedtau(pred_ranked_full, label_ranked_full)
 
-    # Mask to filter out invalid entries
-    mask = np.isfinite(pred) & np.isfinite(true)
-    pred = pred[mask]
-    true = true[mask]
+    # Filtered weighted KT (only label > 0)
+    nonzero_mask = labels > 0
+    if np.sum(nonzero_mask) > 1:
+        label_filtered = labels[nonzero_mask]
+        pred_filtered = preds[nonzero_mask]
 
-    if len(np.unique(pred)) <= 1 or len(np.unique(true)) <= 1:
-        return 0.0  # No meaningful ranking
-    kt, _ = weightedtau(pred, true)
-    return kt if np.isfinite(kt) else 0.0
+        label_ranked_filt = rank_with_id_tiebreak(label_filtered)
+        pred_ranked_filt = rank_with_id_tiebreak(pred_filtered)
+        kt_filt, _ = weightedtau(pred_ranked_filt, label_ranked_filt)
+    else:
+        kt_filt = 0.0  # can't compute with ≤1 item
 
+    return kt_full, kt_filt
+
+def compute_topk_metrics_all(preds, labels, k_list=[1, 10, 20, 30], jac=True):
+    stats = {}
+    N = len(preds)
+    preds = preds.detach().cpu()
+    labels = labels.detach().cpu()
+
+    # For full-set Jaccard
+    true_full_set = set(torch.where(labels > 0)[0].tolist())
+
+    for k in k_list:
+        topk = max(1, math.ceil(N * (k / 100)))
+
+        if topk == 0 or len(true_full_set) == 0:
+            stats[f"Top@{k}%"] = 0.0
+            continue
+
+        pred_topk_idx = set(torch.topk(preds, topk).indices.tolist())
+        true_topk_idx = set(torch.topk(labels, topk).indices.tolist())
+
+        # Top-k metrics
+        intersection = pred_topk_idx & true_topk_idx
+        union = pred_topk_idx | true_topk_idx
+        print(f"Top@{k}%: {len(intersection)} / {topk} = {len(intersection) / topk:.4f}")
+
+        stats[f"Top@{k}%"] = len(intersection) / topk
+
+    # Compute full-set Jaccard
+    pred_full_set = set(torch.topk(preds, len(true_full_set)).indices.tolist())
+    if jac:
+        full_jacc = len(pred_full_set & true_full_set) / len(pred_full_set | true_full_set)
+        stats["Jaccard"] = full_jacc
+
+    return stats
+
+def generate_soft_topk_targets(true_vals, top_k=50, decay=0.95):
+    """
+    Generate soft labels: decaying weights for top-k indices based on true_vals.
+    """
+    device = true_vals.device
+    N = true_vals.size(0)
+    soft_labels = torch.zeros(N, device=device)
+
+    topk_vals, topk_idx = torch.topk(true_vals, top_k)
+    weights = torch.tensor([decay ** i for i in range(top_k)], device=device)
+    soft_labels[topk_idx] = weights
+    return soft_labels
