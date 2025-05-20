@@ -1,4 +1,4 @@
-# TSB
+# TSBM
 
 - Running the code:
 `python -u main.py -d edit-tgwiktionary`
