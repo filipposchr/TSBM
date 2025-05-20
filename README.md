@@ -1,7 +1,7 @@
 # TSB
 
 - Running the code:
-`python -u main.py -d edit-tgwiktionary --lr 0.01`
+`python -u main.py -d edit-tgwiktionary`
 
 - Training the model:
   - Set `testing = False`
@@ -12,5 +12,5 @@
 - Testing the model:
   - Set `testing = True`
   - Loading saved model:
-    - `tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_3.pth'))`
-    - `MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_3.pth'))`
+    - `tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_1.pth'))`
+    - `MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_1.pth'))`
