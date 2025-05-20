@@ -50,9 +50,10 @@ def load_train_real_data(UNIFORM, save_dir="graph_features"):
                            'edit-roa_rupwiktionary', 'edit-tpiwiktionary', 'edit-gdwiktionary',
                            'edit-lnwiktionary', 'edit-omwiktionary', 'edit-sgwiktionary', 'edit-quwiktionary',
                            'edit-rwwiktionary', 'edit-stwikipedia', 'edit-olowikipedia', 'edit-tnwikipedia',
-                           'edit-ffwikipedia', 'edit-dzwikipedia', 'edit-tyvwikipedia', 'edit-dtywikipedia',
-                           'edit-xhwikipedia', 'edit-crwikipedia', 'edit-tswikipedia', 'edit-bgwikiquote',
+                           'edit-ffwikipedia', 'edit-dzwikipedia', 'edit-tyvwikipedia',
+                           'edit-xhwikipedia',  'edit-tswikipedia', 'edit-bgwikiquote',
                            'edit-idwikiquote', 'edit-aswikiquote', 'edit-yiwikiquote', 'edit-sawikiquote']
+
 
 
     print("Total training graphs : ", len(train_real_datasets))
@@ -113,7 +114,7 @@ def load_real_true_TKC(dataName):
 
 def load_real_train_true_TKC():
     train_nodeList, train_true_tkc = [], []
-
+    
     train_real_datasets = ['edit-mrwiktionary', 'edit-siwiktionary', 'edit-stwiktionary', 'edit-wowiktionary',
                            'edit-tkwiktionary', 'edit-aywiktionary', 'edit-anwiktionary', 'edit-pawiktionary',
                            'edit-iawiktionary', 'edit-sowiktionary', 'edit-tiwiktionary', 'edit-sswiktionary',
@@ -124,9 +125,10 @@ def load_real_train_true_TKC():
                            'edit-roa_rupwiktionary', 'edit-tpiwiktionary', 'edit-gdwiktionary',
                            'edit-lnwiktionary', 'edit-omwiktionary', 'edit-sgwiktionary', 'edit-quwiktionary',
                            'edit-rwwiktionary', 'edit-stwikipedia', 'edit-olowikipedia', 'edit-tnwikipedia',
-                           'edit-ffwikipedia', 'edit-dzwikipedia', 'edit-tyvwikipedia', 'edit-dtywikipedia',
-                           'edit-xhwikipedia', 'edit-crwikipedia', 'edit-tswikipedia', 'edit-bgwikiquote',
+                           'edit-ffwikipedia', 'edit-dzwikipedia', 'edit-tyvwikipedia',
+                           'edit-xhwikipedia',  'edit-tswikipedia', 'edit-bgwikiquote',
                            'edit-idwikiquote', 'edit-aswikiquote', 'edit-yiwikiquote', 'edit-sawikiquote']
+
 
     for index in range(len(train_real_datasets)):
         #SH
