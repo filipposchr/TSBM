@@ -166,30 +166,3 @@ def generate_soft_topk_targets(true_vals, top_k=50, decay=0.95):
     weights = torch.tensor([decay ** i for i in range(top_k)], device=device)
     soft_labels[topk_idx] = weights
     return soft_labels
-
-def loss_cal_with_soft_topk(y_out, true_val, num_nodes, device, topk_ratio=0.01, decay=0.95, alpha=0.5):
-    """
-    Combines margin ranking loss with soft top-k loss.
-    - alpha: weight for soft loss vs ranking loss
-    """
-    #Ranking loss
-    _, order_y_true = torch.sort(-true_val[:num_nodes])
-
-    sample_num = num_nodes * 80
-    ind_1 = torch.randint(0, num_nodes, (sample_num,)).long().to(device)
-    ind_2 = torch.randint(0, num_nodes, (sample_num,)).long().to(device)
-
-    rank_measure = torch.sign(-1 * (ind_1 - ind_2)).float()
-
-    input_arr1 = y_out[:num_nodes][order_y_true[ind_1]].to(device)
-    input_arr2 = y_out[:num_nodes][order_y_true[ind_2]].to(device)
-
-    loss_rank = torch.nn.MarginRankingLoss(margin=1.0).forward(input_arr1, input_arr2, rank_measure)
-
-    #Soft top-k loss
-    top_k = int(num_nodes * topk_ratio)
-    soft_targets = generate_soft_topk_targets(true_val[:num_nodes], top_k=top_k, decay=decay)
-    loss_soft = F.smooth_l1_loss(y_out[:num_nodes], soft_targets)
-
-    #Combined loss
-    return (1 - alpha) * loss_rank + alpha * loss_soft
