@@ -22,7 +22,7 @@ parser.add_argument('--bs', type=int, default=1500, help='batch_size')
 parser.add_argument('--prefix', type=str, default='hello_world', help='prefix to name the checkpoints')
 parser.add_argument('--n_degree', type=int, default=20, help='number of neighbors to sample')
 parser.add_argument('--n_head', type=int, default=2, help='number of heads used in attention layer')
-parser.add_argument('--n_epoch', type=int, default=1, help='number of epochs')
+parser.add_argument('--n_epoch', type=int, default=15, help='number of epochs')
 parser.add_argument('--n_layer', type=int, default=2, help='number of network layers')
 parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
 parser.add_argument('--drop_out', type=float, default=0.1, help='dropout probability')
@@ -133,6 +133,43 @@ tatkc_tgat_model = TATKC_TGAT(
     n_head=NUM_HEADS,
     drop_out=DROP_OUT
 )
+
+class MLPWithPTD(nn.Module):
+    def __init__(self, node_dim=128, ptd_dim=128, drop=0.1):
+        super().__init__()
+
+        self.ptd_proj = nn.Sequential(
+            nn.Linear(1, 128),
+            nn.ReLU(),
+            nn.Dropout(drop)
+        )
+
+        self.fc_1 = nn.Linear(node_dim + ptd_dim, 128)
+        self.fc_2 = nn.Linear(128, 64)
+        self.fc_3 = nn.Linear(64, 1)
+
+        self.act = nn.ReLU()
+        self.dropout = nn.Dropout(drop)
+
+        # Weight initialization
+        for layer in [self.fc_1, self.fc_2, self.fc_3]:
+            nn.init.kaiming_normal_(layer.weight)
+
+    def forward(self, src_feat, ptd):
+        # ptd: [B] or [B, 1]
+        if ptd.dim() == 1:
+            ptd = ptd.unsqueeze(-1)  # [B, 1]
+
+        ptd_embed = self.ptd_proj(ptd)  # [B, ptd_dim]
+        x = torch.cat([src_feat, ptd_embed], dim=1)  # [B, node_dim + ptd_dim]
+
+        x = self.act(self.fc_1(x))
+        x = self.dropout(x)
+        x = self.act(self.fc_2(x))
+        x = self.dropout(x)
+        out = self.fc_3(x).squeeze(1)
+        return out
+
 
 class MLPFilm(nn.Module):
     #Using FiLM and CONCAT
@@ -283,35 +320,19 @@ class MLPFilmDef(nn.Module):
 
 MLP_model = MLPFilm().to(device) #FiLM + CONCAT
 #MLP_model = MLPFilmDef().to(device) #FiLM
+#MLP_model = MLPWithPTD().to(device) #CONCAT only
 
 optimizer = torch.optim.Adam(list(tatkc_tgat_model.parameters()) + list(MLP_model.parameters()),lr=LEARNING_RATE)
 tatkc_tgat_model.to(device)
 
 print("Epochs: ", NUM_EPOCH)
 
-testing = False
+testing = True
 
 #LOAD MODEL
 if testing:
     tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_2.pth'))
     MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_2.pth'))
-
-def normalize_preds(pred, method="minmax"):
-    if method == "minmax":
-        min_val, max_val = pred.min(), pred.max()
-        if max_val - min_val > 1e-6:
-            return (pred - min_val) / (max_val - min_val)
-        else:
-            return torch.zeros_like(pred)
-    elif method == "zscore":
-        mean, std = pred.mean(), pred.std()
-        if std > 1e-6:
-            return (pred - mean) / std
-        else:
-            return torch.zeros_like(pred)
-    else:
-        raise ValueError("Unsupported normalization method.")
-
 
 def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
     start_time = time.time()
@@ -343,12 +364,6 @@ def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
             test_pred_tbc = lr_model(src_embed, test_pass_through_degree_batch)
             test_pred_tbc_list.extend(test_pred_tbc.cpu().detach().numpy().tolist())
 
-        #unique_vals = np.unique(test_pred_tbc_list)
-        #print(f"Unique prediction values: {len(unique_vals)}")
-        #print("Some values:", unique_vals[:10])
-        #print(f"Pred min: {test_pred_tbc.min()}, max: {test_pred_tbc.max()}")
-        #print(f"Pred mean: {test_pred_tbc.mean()}, std: {test_pred_tbc.std()}")
-
         with open("test_kendaltau/predicted_bet_cat_mathoverflow.txt", "w") as pred_file:
             for value in test_pred_tbc_list:
                 pred_file.write(f"{value}\n")
@@ -367,7 +382,7 @@ def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
             label = torch.tensor(label, dtype=torch.float32)
 
         k_list = [1, 5, 10, 20]
-        test_pred_tbc_list = normalize_preds(test_pred_tbc_list, method="zscore")
+        #test_pred_tbc_list = normalize_preds(test_pred_tbc_list, method="zscore")
 
         compute_topk_metrics(test_pred_tbc_list, label, k_list=k_list)
 
@@ -430,12 +445,7 @@ def training_tatkc_tgat():
                 if topk_stats['Top@1%'] == 0.0 and topk_stats['Top@20%'] == 0.0 and topk_stats['Top@30%'] == 0.0:
                     continue
 
-                #loss = loss_cal(pred_bc, true_label, len(pred_bc), device)
-                loss = loss_cal_with_soft_topk(pred_bc, true_label, len(pred_bc), device,
-                                               topk_ratio=0.02,  # supervise top-k%
-                                               decay=0.9,  # decaying soft weights
-                                               alpha=0.3  # balance between ranking and soft loss
-                                               )
+                loss = loss_cal(pred_bc, true_label, len(pred_bc), device)
 
                 epoch_topk_1.append(topk_stats['Top@1%'])
                 epoch_topk_10.append(topk_stats['Top@10%'])
@@ -468,5 +478,5 @@ print("Evaluation Time: ", e_time)
 
 #SAVE MODEL
 if not testing:
-    torch.save(MLP_model.state_dict(), './saved_models/model_MLP_2.pth')
-    torch.save(tatkc_tgat_model.state_dict(), './saved_models/model_TGAT_2.pth')
+    torch.save(MLP_model.state_dict(), './saved_models/model_MLP_3.pth')
+    torch.save(tatkc_tgat_model.state_dict(), './saved_models/model_TGAT_3.pth')
