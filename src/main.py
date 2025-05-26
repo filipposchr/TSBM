@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from module_bet import TATKC_TGAT
 from scipy.stats import weightedtau
 from nx2graphs import load_real_data, load_real_true_TKC, load_train_real_data, load_real_train_true_TKC
-from utils import loss_cal_with_soft_topk, loss_cal, compute_kendall_tau, compute_topk_metrics
+from utils import loss_cal, compute_kendall_tau, compute_topk_metrics
 from torch.optim.lr_scheduler import MultiStepLR
 
 # Argument and global variables
