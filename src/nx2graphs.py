@@ -7,7 +7,6 @@ import torch
 from graph import NeighborFinder
 from utils import temporal_adjacency_list, pass_through_degree
 
-
 def load_real_data(dataName):
     g_df = pd.read_csv('./data/test/Real/processed/seq/ml_{}.csv'.format(dataName))
     print(f"Testing dataset: {dataName}")
@@ -54,8 +53,6 @@ def load_train_real_data(UNIFORM, save_dir="graph_features"):
                            'edit-xhwikipedia',  'edit-tswikipedia', 'edit-bgwikiquote',
                            'edit-idwikiquote', 'edit-aswikiquote', 'edit-yiwikiquote', 'edit-sawikiquote']
 
-
-
     print("Total training graphs : ", len(train_real_datasets))
 
     #Save the node features (first time)
@@ -80,10 +77,8 @@ def load_train_real_data(UNIFORM, save_dir="graph_features"):
                 f"Features for {dataset_name} not found in {save_dir}. Run save_all_graph_features first.")
 
         pass_through_d = graph_features.get("pass_through_d")
-
-
-
         pass_through_d_list.append(pass_through_d)
+
         # Populate adjacency list for NeighborFinder
         adj_list = [[] for _ in range(max_idx + 1)]
         for src, dst, eidx, ts in zip(src_list[-1], dst_list[-1], g_df.idx.values, ts_list[-1]):
@@ -99,11 +94,11 @@ def load_train_real_data(UNIFORM, save_dir="graph_features"):
     return (src_list, dst_list, ts_list, node_count, node_list, maxTime_list, ngh_finder, pass_through_d_list)
 
 def load_real_true_TKC(dataName):
-    #sh
+    #sh (shortest)
     g_df = pd.read_csv('./data/test/Real/scores/graph_{}_bet.txt'.format(dataName), names=['node_id', 'score'], sep=' ')
 
-    #sf
-    #g_df = pd.read_csv('./data/test/Real/sf-bc_scores/graph_{}_bet.txt'.format(dataName), names=['node_id', 'score'], sep=' ')
+    #shf (shortest foremost)
+    #g_df = pd.read_csv('./data/test/Real/shf-bc_scores/graph_{}_shf_bet.txt'.format(dataName), names=['node_id', 'score'], sep=' ')
 
     test_nodeList = g_df['node_id'].tolist()
     test_nodeList = [int(i) for i in test_nodeList]
@@ -114,7 +109,7 @@ def load_real_true_TKC(dataName):
 
 def load_real_train_true_TKC():
     train_nodeList, train_true_tkc = [], []
-    
+
     train_real_datasets = ['edit-mrwiktionary', 'edit-siwiktionary', 'edit-stwiktionary', 'edit-wowiktionary',
                            'edit-tkwiktionary', 'edit-aywiktionary', 'edit-anwiktionary', 'edit-pawiktionary',
                            'edit-iawiktionary', 'edit-sowiktionary', 'edit-tiwiktionary', 'edit-sswiktionary',
@@ -129,14 +124,13 @@ def load_real_train_true_TKC():
                            'edit-xhwikipedia',  'edit-tswikipedia', 'edit-bgwikiquote',
                            'edit-idwikiquote', 'edit-aswikiquote', 'edit-yiwikiquote', 'edit-sawikiquote']
 
-
     for index in range(len(train_real_datasets)):
         #SH
         g_df = pd.read_csv('./data/train/Real/scores/bc_scores/{}_bc.txt'.format(train_real_datasets[index]),
             names=['node_id', 'score'], sep=' ')
 
-        #SF
-        #g_df = pd.read_csv('./data/train/Real/scores/sf-bc_scores/{}_bc.txt'.format(train_real_datasets[index]),
+        # shf (shortest foremost)
+        #g_df = pd.read_csv('./data/train/Real/scores/shf_scores/{}_bc.txt'.format(train_real_datasets[index]),
         #    names=['node_id', 'score'], sep=' ')
 
         nodeList = g_df['node_id'].tolist()
@@ -194,4 +188,3 @@ def save_all_graph_features(train_real_datasets, save_dir="graph_features"):
         file_path = os.path.join(save_dir, f"{dataset_name}_features.pkl")
         with open(file_path, "wb") as f:
             pickle.dump(graph_features, f)
-
