@@ -2,6 +2,18 @@
 
 This project provides a framework for approximating **Temporal Shortest Betweenness Centrality (TSBM)** and **Temporal Shortest-Foremost Betweenness Centrality (TSFMBM)** using graph neural networks.
 
+## Requirements
+
+- Python 3.8+
+- PyTorch
+- NetworkX
+- pandas
+
+Install dependencies with:
+```bash
+pip install -r requirements.txt
+```
+
 ## Running the Script
 
 You can run the model with various command-line options.
@@ -45,14 +57,40 @@ tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_1.pth'))
 MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_1.pth'))
 ```
 
-## Requirements
+## Evaluation: Comparing TSBM/TSFMBM with MANTRA
 
-- Python 3.8+
-- PyTorch
-- NetworkX
-- pandas
+You can evaluate the performance of the TSBM or TSFMBM model against existing approximation baselines (e.g., MANTRA) using the `test.py` script.
 
-Install dependencies with:
-```bash
-pip install -r requirements.txt
+### Example Script: `test.py`
+
+This script loads the ground truth values (e.g., from TSBM) and the predicted values (e.g., from MANTRA), computes:
+
+- Top-k accuracy (Top@1%, Top@5%, Top@10%, Top@20%)
+- Jaccard index between top-k sets
+- Weighted Kendall Tau (for ranking agreement)
+
+### Expected Structure:
+```python
+# Ground truth scores (e.g., from TSFMBM model)
+with open('data/test/Real/shf-bc_scores/graph_edit-facebook_wall_shf_bet.txt', 'r') as f2:
+
+# Approximate values (e.g., from MANTRA)
+with open('data/apx/facebook_wall_sfm_apx.txt', 'r') as f1:
 ```
+
+### Run the evaluation:
+Make sure the predicted and true values are aligned in length, then execute:
+
+```bash
+python test.py
+```
+
+### Output example:
+```
+Top@1%: 0.3850 | Top@5%: 0.6120 | Top@10%: 0.3510 | Top@20%: 0.2890 | Jaccard: 0.2980
+Kendall Tau (all nodes):      0.2614
+Kendall Tau (non-zero only):  0.2987
+```
+
+This allows for direct comparison of MANTRA and learned models in terms of ranking quality and top-k overlap.
+
