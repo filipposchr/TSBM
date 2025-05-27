@@ -8,7 +8,6 @@ import numpy as np
 import random
 from tqdm import tqdm
 import torch.nn as nn
-import torch.nn.functional as F
 from module_bet import TATKC_TGAT
 from scipy.stats import weightedtau
 from nx2graphs import load_real_data, load_real_true_TKC, load_train_real_data, load_real_train_true_TKC
@@ -35,14 +34,14 @@ parser.add_argument('--time', type=str, choices=['sintime', 'pos_time_aware', 't
                     default='time')
 parser.add_argument('--uniform', action='store_true', help='take uniform sampling from temporal neighbors')
 parser.add_argument("--local_rank", type=int)
-
+parser.add_argument('--test', action='store_true', help='Run in test mode')
+parser.add_argument('--bet', choices=['sh', 'sfm'], default='sh', help='Betweenness mode: sh (shortest) or sfm (shortest-foremost)')
 
 try:
     args = parser.parse_args()
 except:
     parser.print_help()
     sys.exit(1)
-
 
 BATCH_SIZE = args.bs
 NUM_NEIGHBORS = args.n_degree
@@ -59,6 +58,8 @@ SEQ_LEN = NUM_NEIGHBORS
 DATA = args.data
 NUM_LAYER = args.n_layer
 LEARNING_RATE = args.lr
+testing = args.test
+bet_mode = args.bet
 
 MODEL_SAVE_PATH = f'./saved_models/{args.prefix}-{args.agg_method}-{args.attn_mode}-{args.data}.pth'
 LR_MODEL_SAVE_PATH = f'./saved_models/{args.agg_method}-{args.attn_mode}-{args.data}_mlp.pth'
@@ -96,12 +97,12 @@ setSeeds(89)
 train_real_src_l, train_real_dst_l, train_real_ts_l, train_real_node_count, train_real_node, train_real_time, \
     train_real_ngh_finder, pass_through_d_list = load_train_real_data(UNIFORM)
 
-nodeList_train_real, train_label_l_real = load_real_train_true_TKC()
+nodeList_train_real, train_label_l_real = load_real_train_true_TKC(bet_mode)
 
 test_real_src_l, test_real_dst_l, test_real_ts_l, test_real_node_count, test_real_node, test_real_time, \
     test_real_ngh_finder, test_pass_through_d = load_real_data(dataName=DATA)
 
-nodeList_test_real, test_label_l_real = load_real_true_TKC('{}'.format(DATA))
+nodeList_test_real, test_label_l_real = load_real_true_TKC('{}'.format(DATA), bet_mode)
 train_ts_list, test_ts_list, train_real_ts_list = [], [], []
 
 
@@ -327,10 +328,9 @@ tatkc_tgat_model.to(device)
 
 print("Epochs: ", NUM_EPOCH)
 
-testing = True
-
 #LOAD MODEL
 if testing:
+    print("Running in test mode...")
     tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_2.pth'))
     MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_2.pth'))
 
@@ -478,5 +478,11 @@ print("Evaluation Time: ", e_time)
 
 #SAVE MODEL
 if not testing:
+    print("Running in training mode...")
     torch.save(MLP_model.state_dict(), './saved_models/model_MLP_3.pth')
     torch.save(tatkc_tgat_model.state_dict(), './saved_models/model_TGAT_3.pth')
+
+'''
+1) mlp_1: MLPWithPTD -  shf - loss_cal - CONCAT 
+2) mlp_2: MLPFilm - shf - loss_cal - Film + Cat
+'''
