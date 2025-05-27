@@ -18,6 +18,19 @@ pip install -r requirements.txt
 
 You can run the model with various command-line options.
 
+### Example: Run in Training Mode (default)
+```bash
+python -u main.py
+python -u main.py -d edit-wamazon --bet sh
+```
+
+This configuration:
+- Enables training mode
+- Uses **shortest** betweenness (`--bet sh`)
+- After training, it evaluates the testing dataset `edit-wamazon` (`-d edit-wamazon`)
+
+
+
 ### Example: Run in Test Mode
 ```bash
 python -u main.py -d edit-wamazon --bet sfm --test
@@ -26,12 +39,9 @@ python -u main.py -d edit-wamazon --bet sfm --test
 This configuration:
 - Enables test mode (`--test`)
 - Uses **shortest-foremost** betweenness (`--bet sfm`)
-- Uses the dataset `edit-wamazon` (`-d edit-wamazon`)
+- Evaluates the testing dataset `edit-wamazon` (`-d edit-wamazon`)
 
-### Example: Run in Training Mode (default)
-```bash
-python -u main.py
-```
+
 
 ### Command-Line Argument Reference
 
