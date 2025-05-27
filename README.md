@@ -45,21 +45,6 @@ tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_1.pth'))
 MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_1.pth'))
 ```
 
-## Directory Structure
-
-```
-.
-├── main.py
-├── nx2graphs.py
-├── saved_models/
-│   ├── model_TGAT_1.pth
-│   └── model_MLP_1.pth
-├── data/
-│   └── test/
-│       └── Real/
-├── ...
-```
-
 ## Requirements
 
 - Python 3.8+
@@ -71,7 +56,3 @@ Install dependencies with:
 ```bash
 pip install -r requirements.txt
 ```
-
-## License
-
-This project is released under the MIT License.
