@@ -93,21 +93,25 @@ def load_train_real_data(UNIFORM, save_dir="graph_features"):
 
     return (src_list, dst_list, ts_list, node_count, node_list, maxTime_list, ngh_finder, pass_through_d_list)
 
-def load_real_true_TKC(dataName):
-    #sh (shortest)
-    g_df = pd.read_csv('./data/test/Real/scores/graph_{}_bet.txt'.format(dataName), names=['node_id', 'score'], sep=' ')
 
-    #shf (shortest foremost)
-    #g_df = pd.read_csv('./data/test/Real/shf-bc_scores/graph_{}_shf_bet.txt'.format(dataName), names=['node_id', 'score'], sep=' ')
+def load_real_true_TKC(dataName, bet_mode='sh'):
+    if bet_mode == 'sh':
+        print("  Temporal Shortest Betweenness...")
+        path = f'./data/test/Real/scores/graph_{dataName}_bet.txt'
+    elif bet_mode == 'sfm':
+        print("  Temporal Shortest-Foremost Betweenness...")
+        path = f'./data/test/Real/shf-bc_scores/graph_{dataName}_shf_bet.txt'
+    else:
+        raise ValueError(f"Unknown betweenness mode: {bet_mode}")
 
-    test_nodeList = g_df['node_id'].tolist()
-    test_nodeList = [int(i) for i in test_nodeList]
-
+    g_df = pd.read_csv(path, names=['node_id', 'score'], sep=' ')
+    test_nodeList = g_df['node_id'].astype(int).tolist()
     test_tkcList = g_df['score'].tolist()
+
     return test_nodeList, test_tkcList
 
 
-def load_real_train_true_TKC():
+def load_real_train_true_TKC(bet_mode='sh'):
     train_nodeList, train_true_tkc = [], []
 
     train_real_datasets = ['edit-mrwiktionary', 'edit-siwiktionary', 'edit-stwiktionary', 'edit-wowiktionary',
@@ -125,18 +129,21 @@ def load_real_train_true_TKC():
                            'edit-idwikiquote', 'edit-aswikiquote', 'edit-yiwikiquote', 'edit-sawikiquote']
 
     for index in range(len(train_real_datasets)):
-        #SH
-        g_df = pd.read_csv('./data/train/Real/scores/bc_scores/{}_bc.txt'.format(train_real_datasets[index]),
-            names=['node_id', 'score'], sep=' ')
+        dataset_name = train_real_datasets[index]
 
-        # shf (shortest foremost)
-        #g_df = pd.read_csv('./data/train/Real/scores/shf_scores/{}_bc.txt'.format(train_real_datasets[index]),
-        #    names=['node_id', 'score'], sep=' ')
+        if bet_mode == 'sh':
+            path = f'./data/train/Real/scores/bc_scores/{dataset_name}_bc.txt'
+        elif bet_mode == 'sfm':
+            path = f'./data/train/Real/scores/shf_scores/{dataset_name}_bc.txt'
+        else:
+            raise ValueError(f"Unknown betweenness mode: {bet_mode}")
 
-        nodeList = g_df['node_id'].tolist()
-        nodeList = [int(i) for i in nodeList]
-        train_nodeList.append(nodeList)
+        g_df = pd.read_csv(path, names=['node_id', 'score'], sep=' ')
+
+        nodeList = g_df['node_id'].astype(int).tolist()
         tkcList = g_df['score'].tolist()
+
+        train_nodeList.append(nodeList)
         train_true_tkc.append(tkcList)
 
     return train_nodeList, train_true_tkc
