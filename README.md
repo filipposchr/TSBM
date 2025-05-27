@@ -20,7 +20,6 @@ You can run the model with various command-line options.
 
 ### Example: Run in Training Mode (default)
 ```bash
-python -u main.py
 python -u main.py -d edit-wamazon --bet sh
 ```
 
