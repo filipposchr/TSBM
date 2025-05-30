@@ -331,8 +331,8 @@ print("Epochs: ", NUM_EPOCH)
 #LOAD MODEL
 if testing:
     print("Running in test mode...")
-    tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_2.pth'))
-    MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_2.pth'))
+    tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_2.pth', weights_only=True))
+    MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_2.pth', weights_only=True))
 
 def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
     start_time = time.time()
