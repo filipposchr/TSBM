@@ -5,7 +5,7 @@ import pickle
 import os
 import torch
 from graph import NeighborFinder
-from utils import temporal_adjacency_list, pass_through_degree
+from utils import temporal_adjacency_list, pass_through_degree, compute_earliest_arrival
 
 def load_real_data(dataName):
     g_df = pd.read_csv('./data/test/Real/processed/seq/ml_{}.csv'.format(dataName))
@@ -33,11 +33,15 @@ def load_real_data(dataName):
     pass_through_d = pass_through_degree(temporal_edges, num_nodes)
     pass_through_d = torch.tensor(pass_through_d, dtype=torch.float32)
 
-    return src_list, dst_list, ts_list, node_count, node_list, maxTime_list, ngh_finder, pass_through_d
+    earl_arrival = compute_earliest_arrival(num_nodes, src_list, dst_list, ts_list)
+    earl_arrival = torch.tensor(earl_arrival, dtype=torch.float32)
+
+    return src_list, dst_list, ts_list, node_count, node_list, maxTime_list, ngh_finder, pass_through_d, earl_arrival
 
 def load_train_real_data(UNIFORM, save_dir="graph_features"):
     src_list, dst_list, ts_list, node_count, node_list, maxTime_list, ngh_finder = [], [], [], [], [], [], []
     pass_through_d_list = []
+    earl_arrival_list = []
 
     train_real_datasets = ['edit-mrwiktionary', 'edit-siwiktionary', 'edit-stwiktionary', 'edit-wowiktionary',
                            'edit-tkwiktionary', 'edit-aywiktionary', 'edit-anwiktionary', 'edit-pawiktionary',
@@ -79,6 +83,9 @@ def load_train_real_data(UNIFORM, save_dir="graph_features"):
         pass_through_d = graph_features.get("pass_through_d")
         pass_through_d_list.append(pass_through_d)
 
+        earl_arrival = graph_features.get("earl_arrival")
+        earl_arrival_list.append(earl_arrival)
+
         # Populate adjacency list for NeighborFinder
         adj_list = [[] for _ in range(max_idx + 1)]
         for src, dst, eidx, ts in zip(src_list[-1], dst_list[-1], g_df.idx.values, ts_list[-1]):
@@ -91,7 +98,7 @@ def load_train_real_data(UNIFORM, save_dir="graph_features"):
         maxTime_list.append(max(g_df.ts.values))
         ngh_finder.append(NeighborFinder(adj_list, uniform=UNIFORM))
 
-    return (src_list, dst_list, ts_list, node_count, node_list, maxTime_list, ngh_finder, pass_through_d_list)
+    return (src_list, dst_list, ts_list, node_count, node_list, maxTime_list, ngh_finder, pass_through_d_list, earl_arrival_list)
 
 
 def load_real_true_TKC(dataName, bet_mode='sh'):
@@ -187,8 +194,12 @@ def save_all_graph_features(train_real_datasets, save_dir="graph_features"):
         pass_through_d = pass_through_degree(temporal_edges,num_nodes)
         pass_through_d = torch.tensor(pass_through_d, dtype=torch.float32)
 
+        earl_arrival = compute_earliest_arrival(num_nodes, src, dst, ts)
+        earl_arrival = torch.tensor(earl_arrival, dtype=torch.float32)
+
         graph_features = {
-            "pass_through_d" : pass_through_d
+            "pass_through_d" : pass_through_d,
+            "earl_arrival" : earl_arrival
         }
 
         # Save graph features to pickle
