@@ -168,29 +168,36 @@ def generate_soft_topk_targets(true_vals, top_k=50, decay=0.95):
     return soft_labels
 
 
-def loss_cal_with_soft_topk(y_out, true_val, num_nodes, device, topk_ratio=0.01, decay=0.95, alpha=0.5):
-    """
-    Combines margin ranking loss with soft top-k loss.
-    - alpha: weight for soft loss vs ranking loss
-    """
-    #Ranking loss
-    _, order_y_true = torch.sort(-true_val[:num_nodes])
+import heapq
+from collections import defaultdict
 
-    sample_num = num_nodes * 80
-    ind_1 = torch.randint(0, num_nodes, (sample_num,)).long().to(device)
-    ind_2 = torch.randint(0, num_nodes, (sample_num,)).long().to(device)
+def build_temporal_adjacency(src_list, dst_list, ts_list):
+    adj = defaultdict(list)
+    for u, v, t in zip(src_list, dst_list, ts_list):
+        adj[u].append((v, t))
+    return adj
 
-    rank_measure = torch.sign(-1 * (ind_1 - ind_2)).float()
+def compute_earliest_arrival(num_nodes, src_list, dst_list, ts_list):
+    adj = build_temporal_adjacency(src_list, dst_list, ts_list)
 
-    input_arr1 = y_out[:num_nodes][order_y_true[ind_1]].to(device)
-    input_arr2 = y_out[:num_nodes][order_y_true[ind_2]].to(device)
+    in_deg = [0] * (num_nodes + 1)
+    for v in dst_list:
+        in_deg[v] += 1
 
-    loss_rank = torch.nn.MarginRankingLoss(margin=1.0).forward(input_arr1, input_arr2, rank_measure)
+    arrival_time = [float('inf')] * (num_nodes + 1)
+    heap = []
 
-    #Soft top-k loss
-    top_k = int(num_nodes * topk_ratio)
-    soft_targets = generate_soft_topk_targets(true_val[:num_nodes], top_k=top_k, decay=decay)
-    loss_soft = F.smooth_l1_loss(y_out[:num_nodes], soft_targets)
+    for u in range(1, num_nodes + 1):
+        heapq.heappush(heap, (0, u))
 
-    #Combined loss
-    return (1 - alpha) * loss_rank + alpha * loss_soft
+    while heap:
+        curr_time, u = heapq.heappop(heap)
+        for v, t in adj.get(u, []):
+            if t >= curr_time and t < arrival_time[v]:
+                arrival_time[v] = t
+                heapq.heappush(heap, (t, v))
+
+    max_ts = max(ts_list)
+    arrival_time = [min(t, max_ts) for t in arrival_time[1:]]
+
+    return np.array(arrival_time, dtype=np.float32)
