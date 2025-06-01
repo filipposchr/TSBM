@@ -13,6 +13,7 @@ from scipy.stats import weightedtau
 from nx2graphs import load_real_data, load_real_true_TKC, load_train_real_data, load_real_train_true_TKC
 from utils import loss_cal, compute_kendall_tau, compute_topk_metrics
 from torch.optim.lr_scheduler import MultiStepLR
+import torch.nn.functional as F
 
 # Argument and global variables
 parser = argparse.ArgumentParser('Interface for TATKC experiments')
@@ -95,12 +96,12 @@ setSeeds(89)
 
 
 train_real_src_l, train_real_dst_l, train_real_ts_l, train_real_node_count, train_real_node, train_real_time, \
-    train_real_ngh_finder, pass_through_d_list = load_train_real_data(UNIFORM)
+    train_real_ngh_finder, pass_through_d_list, earl_arrival_list = load_train_real_data(UNIFORM)
 
 nodeList_train_real, train_label_l_real = load_real_train_true_TKC(bet_mode)
 
 test_real_src_l, test_real_dst_l, test_real_ts_l, test_real_node_count, test_real_node, test_real_time, \
-    test_real_ngh_finder, test_pass_through_d = load_real_data(dataName=DATA)
+    test_real_ngh_finder, test_pass_through_d,  test_earl_arrival = load_real_data(dataName=DATA)
 
 nodeList_test_real, test_label_l_real = load_real_true_TKC('{}'.format(DATA), bet_mode)
 train_ts_list, test_ts_list, train_real_ts_list = [], [], []
@@ -238,60 +239,63 @@ class MLPFilm(nn.Module):
 
         modulated_feat = src_feat * scale + bias  # FiLM-style modulation
 
-        with torch.no_grad():
-            src_norm = torch.norm(src_feat, dim=1).mean().item()
-            mod_norm = torch.norm(modulated_feat, dim=1).mean().item()
-            rel_weight = mod_norm / (src_norm + 1e-6)
-            with open("./saved_models/ptd_vs_src_log_film.txt", "a") as f:
-                f.write(f"{src_norm:.6f},{mod_norm:.6f},{rel_weight:.6f}\n")
-
         ptd_proj = self.ptd_proj(ptd_feat)  # [B, 128]
         x = torch.cat([modulated_feat, ptd_proj], dim=1)
         x = self.input_proj(x)
         return self.mlp(x).squeeze(1)
 
-class MLPFilmDef(nn.Module):
-    #Using only FiLM (no CONCAT)
-    def __init__(self, node_dim=128, ptd_dim=1, final_dim=128, drop=0.1):
+
+class MLPFilmThreeFeatCF(nn.Module):
+    def __init__(self, node_dim=128, scalar_dim=1, final_dim=128, drop=0.1):
         super().__init__()
 
-        # Project scalar PTD to scale and bias
+        # Project scalar PTD to FiLM scale/bias
         self.ptd_scale_proj = nn.Sequential(
-            nn.Linear(ptd_dim, node_dim),
+            nn.Linear(scalar_dim, node_dim),
             nn.LayerNorm(node_dim),
-            nn.Sigmoid(),  # keep scale in [0, 1]
+            nn.Sigmoid()
         )
-
         self.ptd_bias_proj = nn.Sequential(
-            nn.Linear(ptd_dim, node_dim),
-            nn.LayerNorm(node_dim),
+            nn.Linear(scalar_dim, node_dim),
+            nn.LayerNorm(node_dim)
         )
 
-        # Project modulated src_feat to final dimension
-        self.input_proj = nn.Sequential(
-            nn.Linear(node_dim, final_dim),
+        # Project PTD for concat
+        self.ptd_proj = nn.Sequential(
+            nn.Linear(scalar_dim, node_dim),
+            nn.LayerNorm(node_dim),
             nn.ReLU(),
             nn.Dropout(drop)
         )
 
-        # Deep MLP (no residuals here, but can be added later)
+        # Project arrival time scalar to match dim
+        self.arrival_proj = nn.Sequential(
+            nn.Linear(scalar_dim, node_dim),
+            nn.LayerNorm(node_dim),
+            nn.ReLU(),
+            nn.Dropout(drop)
+        )
+
+        # Combined projection: modulated src_feat + ptd_proj + arrival_proj = 3 * node_dim
+        self.input_proj = nn.Sequential(
+            nn.Linear(3 * node_dim, final_dim),
+            nn.ReLU(),
+            nn.Dropout(drop)
+        )
+
         self.mlp = nn.Sequential(
             nn.Linear(final_dim, 256),
             nn.ReLU(),
             nn.Dropout(drop),
-
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.Dropout(drop),
-
             nn.Linear(128, 128),
             nn.ReLU(),
             nn.Dropout(drop),
-
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Dropout(drop),
-
             nn.Linear(64, 1)
         )
 
@@ -299,29 +303,83 @@ class MLPFilmDef(nn.Module):
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_normal_(layer.weight)
 
-    def forward(self, src_feat, ptd_feat):
+    def forward(self, src_feat, ptd_feat, arrival_feat):
         if ptd_feat.dim() == 1:
-            ptd_feat = ptd_feat.unsqueeze(-1)  # shape [B, 1]
+            ptd_feat = ptd_feat.unsqueeze(-1)
+        if arrival_feat.dim() == 1:
+            arrival_feat = arrival_feat.unsqueeze(-1)
 
-        scale = self.ptd_scale_proj(ptd_feat)  # shape [B, 128]
-        bias  = self.ptd_bias_proj(ptd_feat)   # shape [B, 128]
+        # FiLM modulation with PTD
+        scale = self.ptd_scale_proj(ptd_feat)
+        bias = self.ptd_bias_proj(ptd_feat)
+        modulated_feat = src_feat * scale + bias
 
-        modulated_feat = src_feat * scale + bias  # FiLM-style modulation
+        # Project both scalar features
+        ptd_emb = self.ptd_proj(ptd_feat)
+        arrival_emb = self.arrival_proj(arrival_feat)
 
-        with torch.no_grad():
-            src_norm = torch.norm(src_feat, dim=1).mean().item()
-            mod_norm = torch.norm(modulated_feat, dim=1).mean().item()
-            rel_weight = mod_norm / (src_norm + 1e-6)
-            with open("./saved_models/ptd_vs_src_log_film.txt", "a") as f:
-                f.write(f"{src_norm:.6f},{mod_norm:.6f},{rel_weight:.6f}\n")
-
-        x = self.input_proj(modulated_feat)
+        # Concatenate all three representations
+        x = torch.cat([modulated_feat, ptd_emb, arrival_emb], dim=1)  # [B, 384]
+        x = self.input_proj(x)
         return self.mlp(x).squeeze(1)
 
 
-MLP_model = MLPFilm().to(device) #FiLM + CONCAT
-#MLP_model = MLPFilmDef().to(device) #FiLM
-#MLP_model = MLPWithPTD().to(device) #CONCAT only
+class MLPWithThreeFeatC(nn.Module):
+    def __init__(self, node_dim=128, scalar_dim=1, aux_dim=128, drop=0.1):
+        super().__init__()
+
+        # Project PTD feature (scalar) to 128-dim
+        self.ptd_proj = nn.Sequential(
+            nn.Linear(scalar_dim, node_dim),
+            nn.LayerNorm(node_dim),
+            nn.ReLU(),
+            nn.Dropout(drop)
+        )
+
+        # Project arrival feature (scalar) to 128-dim
+        self.arrival_proj = nn.Sequential(
+            nn.Linear(scalar_dim, node_dim),
+            nn.LayerNorm(node_dim),
+            nn.ReLU(),
+            nn.Dropout(drop)
+        )
+
+        # Final input dim = node_dim + ptd_dim + arrival_dim = 128 + 128 + 128
+        self.fc_1 = nn.Linear(node_dim + 2 * aux_dim, 128)
+        self.fc_2 = nn.Linear(128, 64)
+        self.fc_3 = nn.Linear(64, 1)
+
+        self.act = nn.ReLU()
+        self.dropout = nn.Dropout(drop)
+
+        for layer in [self.fc_1, self.fc_2, self.fc_3]:
+            nn.init.kaiming_normal_(layer.weight)
+
+    def forward(self, src_feat, ptd, arrival):
+        # ptd and arrival are expected to be [B] or [B, 1]
+        if ptd.dim() == 1:
+            ptd = ptd.unsqueeze(-1)
+        if arrival.dim() == 1:
+            arrival = arrival.unsqueeze(-1)
+
+        ptd_embed = self.ptd_proj(ptd)            # [B, 128]
+
+        arrival_feat = (arrival - arrival.mean()) / (arrival.std() + 1e-6)
+        arrival_embed = self.arrival_proj(arrival_feat)  # [B, 128]
+
+        x = torch.cat([src_feat, ptd_embed, arrival_embed], dim=1)  # [B, 384]
+        x = self.act(self.fc_1(x))
+        x = self.dropout(x)
+        x = self.act(self.fc_2(x))
+        x = self.dropout(x)
+        out = self.fc_3(x).squeeze(1)  # [B]
+        return out
+
+#MLP MODELS
+#MLP_model = MLPFilm().to(device) #FiLM + CONCAT
+MLP_model = MLPWithPTD().to(device) #CONCAT
+#MLP_model = MLPWithThreeFeatC().to(device) #three features CONCAT
+#MLP_model = MLPFilmThreeFeatCF().to(device) #three features FiLM + CONCAT
 
 optimizer = torch.optim.Adam(list(tatkc_tgat_model.parameters()) + list(MLP_model.parameters()),lr=LEARNING_RATE)
 tatkc_tgat_model.to(device)
@@ -331,8 +389,8 @@ print("Epochs: ", NUM_EPOCH)
 #LOAD MODEL
 if testing:
     print("Running in test mode...")
-    tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_2.pth', weights_only=True))
-    MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_2.pth', weights_only=True))
+    tatkc_tgat_model.load_state_dict(torch.load('./saved_models/model_TGAT_1.pth', weights_only=True))
+    MLP_model.load_state_dict(torch.load('./saved_models/model_MLP_1.pth', weights_only=True))
 
 def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
     start_time = time.time()
@@ -361,7 +419,14 @@ def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
             ptd = test_pass_through_d[test_src_l_cut - 1].float()
             test_pass_through_degree_batch = ptd.unsqueeze(-1)
 
-            test_pred_tbc = lr_model(src_embed, test_pass_through_degree_batch)
+            earl_arrival = test_earl_arrival[test_src_l_cut - 1].float()
+            earl_arrival_batch = earl_arrival.unsqueeze(-1)
+
+            if isinstance(MLP_model, (MLPFilm, MLPWithPTD)): #two features
+                test_pred_tbc = lr_model(src_embed, test_pass_through_degree_batch)
+            else: #three features
+                test_pred_tbc = lr_model(src_embed, test_pass_through_degree_batch, earl_arrival_batch)
+
             test_pred_tbc_list.extend(test_pred_tbc.cpu().detach().numpy().tolist())
 
         with open("test_kendaltau/predicted_bet_cat_mathoverflow.txt", "w") as pred_file:
@@ -414,6 +479,7 @@ def training_tatkc_tgat():
             num_train_batch = math.ceil(num_train_instance / BATCH_SIZE)
 
             pass_through_degree = pass_through_d_list[j]
+            earl_arrival = earl_arrival_list[j]
 
             for batch_i in range(num_train_batch):
                 s_idx = batch_i * BATCH_SIZE
@@ -438,7 +504,13 @@ def training_tatkc_tgat():
                 ptd = pass_through_degree[src_l_cut - 1].float()
                 pass_through_degree_batch = ptd.unsqueeze(-1)
 
-                pred_bc = MLP_model(src_embed, pass_through_degree_batch)
+                earl_arr = earl_arrival[src_l_cut - 1].float()
+                earl_arr_batch = earl_arr.unsqueeze(-1)
+
+                if isinstance(MLP_model, (MLPFilm, MLPWithPTD)):  # two features
+                    pred_bc = MLP_model(src_embed, pass_through_degree_batch)
+                else:  # three features
+                    pred_bc = MLP_model(src_embed, pass_through_degree_batch, earl_arr_batch)
 
                 topk_stats = compute_topk_metrics(pred_bc, true_label, k_list=[1 ,5, 10, 20, 30], jac=False)
 
@@ -474,15 +546,9 @@ if not testing:
 e_time = eval_real_data('test for real data', tatkc_tgat_model, MLP_model, test_real_ngh_finder,
                                               nodeList_test_real, test_real_ts_list, test_label_l_real)
 
-print("Evaluation Time: ", e_time)
 
 #SAVE MODEL
 if not testing:
     print("Running in training mode...")
-    torch.save(MLP_model.state_dict(), './saved_models/model_MLP_3.pth')
-    torch.save(tatkc_tgat_model.state_dict(), './saved_models/model_TGAT_3.pth')
-
-'''
-1) mlp_1: MLPWithPTD -  shf - loss_cal_simple - CONCAT 
-2) mlp_2: MLPFilm - shf - loss_cal_simple - Film + Cat
-'''
+    torch.save(MLP_model.state_dict(), './saved_models/model_MLP_2.pth')
+    torch.save(tatkc_tgat_model.state_dict(), './saved_models/model_TGAT_2.pth')
