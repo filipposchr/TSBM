@@ -429,7 +429,7 @@ def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
 
             test_pred_tbc_list.extend(test_pred_tbc.cpu().detach().numpy().tolist())
 
-        with open("test_kendaltau/predicted_bet_cat_mathoverflow.txt", "w") as pred_file:
+        with open("test_kendaltau/predicted_values.txt", "w") as pred_file:
             for value in test_pred_tbc_list:
                 pred_file.write(f"{value}\n")
 
