@@ -41,6 +41,25 @@ This configuration:
 - Evaluates the testing dataset `edit-wamazon` (`-d edit-wamazon`)
 
 
+## Batch Evaluation: `test_multiple.py`
+
+To evaluate performance across multiple datasets in one run, use the `test_multiple.py` script provided in the repository.
+
+### Run it with:
+
+```bash
+python test_multiple.py
+
+This will sequentially evaluate all listed datasets using the **TSFMBM** model in test mode with `--bet sfm`.
+
+>  **Note:**  
+> If you want to change the betweenness type (e.g., from **shortest-foremost** to **shortest**), open `test_multiple.py` and modify the `--bet` argument inside the command construction line:
+>
+> ```python
+> command = ["python", "-u", "main.py", "-d", d, "--bet", "sfm", "--test"]
+> ```
+>
+> Change `"sfm"` to `"sh"` to evaluate using the **shortest** betweenness model.
 
 ### Command-Line Argument Reference
 
