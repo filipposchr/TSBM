@@ -102,3 +102,12 @@ Kendall Tau (non-zero only):  0.2987
 ```
 
 This allows for direct comparison of MANTRA and learned models in terms of ranking quality and top-k overlap.
+
+## Batch Evaluation: `test_multiple.py`
+
+To evaluate performance across multiple datasets in one run, use the `test_multiple.py` script provided in the repository.
+
+### Run it with:
+
+```bash
+python test_multiple.py
