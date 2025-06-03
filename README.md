@@ -1,5 +1,21 @@
 # Temporal Betweenness Centrality Prediction
 
+## Table of Contents
+- [Requirements](#requirements)
+- [Running the Script](#running-the-script)
+  - [Example: Run in Training Mode (default)](#example-run-in-training-mode-default)
+  - [Example: Run in Test Mode](#example-run-in-test-mode)
+  - [Command-Line Argument Reference](#command-line-argument-reference)
+- [Saving the Model](#saving-the-model)
+- [Loading a Saved Model](#loading-a-saved-model)
+- [Evaluation: Comparing TSBM/TSFMBM with MANTRA](#evaluation-comparing-tsbmtsfmbm-with-mantra)
+  - [Example Script: test.py](#example-script-testpy)
+  - [Expected Structure](#expected-structure)
+  - [Run the Evaluation](#run-the-evaluation)
+  - [Example Output](#example-output)
+- [Batch Evaluation: test_multiple.py](#batch-evaluation-test_multiplepy)
+
+
 This project provides a framework for approximating **Temporal Shortest Betweenness Centrality (TSBM)** and **Temporal Shortest-Foremost Betweenness Centrality (TSFMBM)** using graph neural networks.
 
 ## Requirements
