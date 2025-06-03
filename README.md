@@ -124,7 +124,7 @@ python test_multiple.py
 
 This will sequentially evaluate all listed datasets using the **TSFMBM** model in test mode with `--bet sfm`.
 
-> 💡 **Note:**  
+>  **Note:**  
 > If you want to change the betweenness type (e.g., from **shortest-foremost** to **shortest**), open `test_multiple.py` and modify the `--bet` argument inside the command construction line:
 >
 > ```python
