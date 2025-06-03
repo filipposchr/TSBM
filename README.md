@@ -61,7 +61,9 @@ This will sequentially evaluate all listed datasets using the **TSFMBM** model i
 >
 > Change `"sfm"` to `"sh"` to evaluate using the **shortest** betweenness model.
 
-### Command-Line Argument Reference
+
+
+## Command-Line Argument Reference
 
 | Flag             | Description                                                      | Default              |
 |------------------|------------------------------------------------------------------|----------------------|
