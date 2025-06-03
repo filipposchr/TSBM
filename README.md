@@ -47,17 +47,6 @@ This configuration:
 - Evaluates the testing dataset edit-wamazon (-d edit-wamazon)
 
 
-## Batch Evaluation: `test_multiple.py`
-
-To evaluate performance across multiple datasets in one run, use the `test_multiple.py` script provided in the repository.
-
-### Run it with:
-
-```bash
-python test_multiple.py
-
-This will sequentially evaluate all listed datasets using the **TSFMBM** model in test mode with `--bet sfm`.
-
 
 ### Command-Line Argument Reference
 
@@ -123,3 +112,7 @@ python test.py
 Top@1%: 0.3850 | Top@5%: 0.6120 | Top@10%: 0.3510 | Top@20%: 0.2890 | Jaccard: 0.2980
 Kendall Tau (all nodes):      0.2614
 Kendall Tau (non-zero only):  0.2987
+
+
+
+This allows for direct comparison of MANTRA and learned models in terms of ranking quality and top-k overlap.
