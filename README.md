@@ -48,7 +48,7 @@ This configuration:
 |------------------|------------------------------------------------------------------|----------------------|
 | `--test`         | Runs the model in test mode (loads saved models)                | `False`              |
 | `--bet`          | Betweenness mode: `sh` for shortest, `sfm` for shortest-foremost | `sh`                 |
-| `-d`, `--data`   | Dataset name to use for training/testing                         | `edit-tgwiktioanry`  |
+| `-d`, `--data`   | Dataset name to use for training/testing                         | `edit-tgwiktionary`  |
 
 ## Saving the Model
 
