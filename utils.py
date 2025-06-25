@@ -201,3 +201,16 @@ def compute_earliest_arrival(num_nodes, src_list, dst_list, ts_list):
     arrival_time = [min(t, max_ts) for t in arrival_time[1:]]
 
     return np.array(arrival_time, dtype=np.float32)
+
+
+def normalized_supremum_deviation(pred, label):
+    pred = (pred - np.min(pred)) / (np.max(pred) - np.min(pred))
+    label = (label - np.min(label)) / (np.max(label) - np.min(label))
+    return np.abs(np.mean(pred) - np.mean(label))
+
+
+def normalized_mae(pred, label):
+    pred = np.array(pred)
+    label = np.array(label)
+    range_label = np.max(label) - np.min(label) + 1e-8
+    return np.mean(np.abs(pred - label)) / range_label
