@@ -11,7 +11,7 @@ import torch.nn as nn
 from module_bet import TATKC_TGAT
 from scipy.stats import weightedtau
 from nx2graphs import load_real_data, load_real_true_TKC, load_train_real_data, load_real_train_true_TKC
-from utils import loss_cal, compute_kendall_tau, compute_topk_metrics
+from utils import loss_cal, compute_kendall_tau, compute_topk_metrics, normalized_supremum_deviation, normalized_mae
 from torch.optim.lr_scheduler import MultiStepLR
 import torch.nn.functional as F
 
@@ -435,6 +435,12 @@ def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
 
         label = np.clip(label, a_min=0.0, a_max=None)
         wkt, _ = weightedtau(test_pred_tbc_list, label)
+
+        sd_value = normalized_supremum_deviation(test_pred_tbc_list, label)
+        norm_mae = normalized_mae(test_pred_tbc_list, label)
+
+        print("Formal Supremum Deviation Norm:", sd_value)
+        print("MAE Norm:", norm_mae)
 
         print("Kendall Tau (default) : ", wkt)
         kt_all, kt_nonzero = compute_kendall_tau(test_pred_tbc_list, label)
