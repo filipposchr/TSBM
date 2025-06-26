@@ -436,11 +436,25 @@ def eval_real_data(hint, tgan, lr_model, sampler, src, ts, label):
         label = np.clip(label, a_min=0.0, a_max=None)
         wkt, _ = weightedtau(test_pred_tbc_list, label)
 
+        #Additional Metrics
         sd_value = normalized_supremum_deviation(test_pred_tbc_list, label)
         norm_mae = normalized_mae(test_pred_tbc_list, label)
 
-        print("Formal Supremum Deviation Norm:", sd_value)
+        num_nodes = len(label)
+        norm_factor = 1 / (num_nodes * (num_nodes - 1))
+        norm_label = norm_factor * label
+        
+        pred = np.array(test_pred_tbc_list)
+        true = np.array(label)
+        mask = (pred <= 0) & (true > 0)
+        count = np.sum(mask)
+        print("Number of nodes with pred ≤ 0 and true > 0:", count)
+
+        print("Max bc:", np.max(label))
+        print("Max normalized bc:", np.max(norm_label))
+        print("Supremum Deviation Norm:", sd_value)
         print("MAE Norm:", norm_mae)
+        #### 
 
         print("Kendall Tau (default) : ", wkt)
         kt_all, kt_nonzero = compute_kendall_tau(test_pred_tbc_list, label)
