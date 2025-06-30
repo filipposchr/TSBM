@@ -130,14 +130,12 @@ By default, this script runs the model on each testing dataset.
 
 ### Run it with:
 
+Evaluate all listed datasets using the **shortest betweenness centrality (sh)** method, run:
 ```bash
 python test_multiple.py --bet sh
 ```
 
-This will sequentially evaluate all listed datasets using the shortest betweenness centrality (sh) method in test mode.
-
-If you want to evaluate the datasets using the shortest-foremost betweenness (sfm) centrality methid in test mode:
-
+Evaluate all listed datasets using the **shortest-foremost betweenness centrality (sfm)** method, run:
 ```bash
 python test_multiple.py --bet sfm
 ```
