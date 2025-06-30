@@ -129,13 +129,16 @@ To evaluate performance across multiple datasets in one run, use the `test_multi
 
 By default, this script runs the model on each dataset using the following parameters:
 
-- `--test`: Enables test mode (uses saved models)
-- `--bet`: Specifies which betweenness centrality to use:
-  - `sfm` → **shortest-foremost** betweenness centrality
-  - `sh` → **shortest** betweenness centrality
-- `-d <dataset>`: Specifies the dataset to evaluate (looped over a predefined list)
-
 ### Run it with:
 
 ```bash
+python test_multiple.py --bet sh
+
+This will sequentially evaluate all listed datasets using the shortest betweenness centrality (sh) method in test mode.
+
+If you want to evaluate the datasets using the shortest-foremost betweenness (sfm) centrality methid in test mode:
+
+```bash
 python test_multiple.py --bet sfm
+
+
