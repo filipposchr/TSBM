@@ -128,23 +128,14 @@ This allows direct performance comparison of MANTRA and learned models.
 To evaluate performance across multiple datasets in one run, use the `test_multiple.py` script provided in the repository.
 
 By default, this script runs the model on each dataset using the following parameters:
+
 - `--test`: Enables test mode (uses saved models)
-- `--bet sfm`: Uses **shortest-foremost** betweenness centrality
+- `--bet`: Specifies which betweenness centrality to use:
+  - `sfm` → **shortest-foremost** betweenness centrality
+  - `sh` → **shortest** betweenness centrality
 - `-d <dataset>`: Specifies the dataset to evaluate (looped over a predefined list)
 
 ### Run it with:
 
 ```bash
-python test_multiple.py
-```
-
-This will sequentially evaluate all listed datasets using the **TSFMBM** model in test mode with `--bet sfm`.
-
->  **Note:**  
-> If you want to change the betweenness type (e.g., from **shortest-foremost** to **shortest**), open `test_multiple.py` and modify the `--bet` argument inside the command construction line:
->
-> ```python
-> command = ["python", "-u", "main.py", "-d", d, "--bet", "sfm", "--test"]
-> ```
->
-> Change `"sfm"` to `"sh"` to evaluate using the **shortest** betweenness model (TSBM).
+python test_multiple.py --bet sfm
