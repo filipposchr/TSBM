@@ -126,19 +126,18 @@ This allows direct performance comparison of MANTRA and learned models.
 ## Batch Evaluation: `test_multiple.py`
 
 To evaluate performance across multiple datasets in one run, use the `test_multiple.py` script provided in the repository.
-
-By default, this script runs the model on each dataset using the following parameters:
+By default, this script runs the model on each testing dataset.
 
 ### Run it with:
 
 ```bash
-python test_multiple.py --bet sh
+python test_multiple.py --bet sh```
 
 This will sequentially evaluate all listed datasets using the shortest betweenness centrality (sh) method in test mode.
 
 If you want to evaluate the datasets using the shortest-foremost betweenness (sfm) centrality methid in test mode:
 
 ```bash
-python test_multiple.py --bet sfm
+python test_multiple.py --bet sfm```
 
 
